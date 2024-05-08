@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import random
 import time
@@ -6,8 +7,11 @@ from datetime import datetime, timedelta, timezone
 from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, unset_jwt_cookies, jwt_required, JWTManager
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
+from sqlalchemy import extract
+from datetime import datetime
+from sqlalchemy import func
 
-from models import db, User, OtpRequests, Expense
+from models import db, User, OtpRequests, Expense, Reminder
 from email_sender import send_mail
 
 api = Flask(__name__)
@@ -48,7 +52,7 @@ def create_token():
                 return jsonify({
                     "email": email,
                     "access_token": access_token
-                    })
+                })
                 # session["user_id"] = user.id
                 # login_user(user, remember=True)
                 # return jsonify("Login Successful.")
@@ -56,7 +60,6 @@ def create_token():
                 return jsonify("Incorrect Password.")
         else:
             return jsonify("Email does not exist.")
-        
 
     email = request.json.get("email", None)
     password = request.json.get("password", None)
@@ -76,6 +79,7 @@ def send_otp(email):
     presave = OtpRequests(email=email, otp=otp, time=current_time)
     db.session.add(presave)
     db.session.commit()
+
 
 @api.route("/otp", methods=['POST'])
 def generate_otp():
@@ -98,6 +102,7 @@ def generate_otp():
         except:
             return jsonify({"error": "Error occured. Please try again later."})
 
+
 @api.route("/signup", methods=["POST"])
 def signup():
     name = request.json['name']
@@ -114,13 +119,12 @@ def signup():
         if str(otp) == str(otp_request.otp):
             if current_time - otp_request.time < 600:
                 hashed_password = bcrypt.generate_password_hash(password)
-                new_user = User(email=email, name=name, phone=phone, password=hashed_password)
+                new_user = User(email=email, name=name,
+                                phone=phone, password=hashed_password)
                 db.session.add(new_user)
                 db.session.commit()
                 access_token = create_access_token(identity=email)
 
-                
-            
                 otp_request = OtpRequests.query.filter_by(email=email).first()
 
                 if otp_request:
@@ -131,7 +135,7 @@ def signup():
                     "email": email,
                     "access_token": access_token
                 })
-            
+
             else:
                 otp_request = OtpRequests.query.filter_by(email=email).first()
 
@@ -186,14 +190,132 @@ def my_profile(getemail):
 
     return response_body
 
-# Functionality to Add Expense-----------------------------------#
+
+# Dashboard Routes-----------------------------------------------------------------------------#
+# Getting name of the User
+@api.route("/name", methods=["GET"])
+@jwt_required()
+def get_name():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        name = user.name.split(" ")[0]
+        return jsonify({"name": str(name)}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Get the total Expense of the month and year
+@api.route("/total_expense", methods=["GET"])
+@jwt_required()
+def get_total_expense():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        current_month_expense = db.session.query(func.sum(Expense.price)).filter(
+            extract('year', Expense.date) == datetime.utcnow().year,
+            extract('month', Expense.date) == datetime.utcnow().month,
+            Expense.email == email
+        ).scalar() or 0
+
+        current_year_expense = db.session.query(func.sum(Expense.price)).filter(
+            extract('year', Expense.date) == datetime.utcnow().year,
+            Expense.email == email
+        ).scalar() or 0
+
+        return jsonify({
+            "monthly": current_month_expense,
+            "yearly": current_year_expense
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Get the tag based Expenses
+# Define the tags
+tags = [
+    "Housing",
+    "Transportation",
+    "Food",
+    "Health Care",
+    "Personal Care",
+    "Debt",
+    "Entertainment",
+    "Lend",
+    "Miscellaneous"
+]
+
+
+@api.route("/tag_based_expenses", methods=["GET"])
+@jwt_required()
+def get_tag_based_expenses():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Get current month and year
+        current_month = datetime.utcnow().month
+        current_year = datetime.utcnow().year
+
+        # Get current month expenses for each tag
+        current_month_expenses = {}
+        for tag in tags:
+            tag_expense = db.session.query(func.sum(Expense.price)).filter(
+                extract('year', Expense.date) == current_year,
+                extract('month', Expense.date) == current_month,
+                Expense.tag == tag,
+                Expense.email == email
+            ).scalar() or 0
+            current_month_expenses[tag] = tag_expense
+
+        # Get previous month expenses for each tag
+        previous_month = current_month - 1 if current_month > 1 else 12
+        previous_year = current_year if current_month > 1 else current_year - 1
+        previous_month_expenses = {}
+        for tag in tags:
+            tag_expense = db.session.query(func.sum(Expense.price)).filter(
+                extract('year', Expense.date) == previous_year,
+                extract('month', Expense.date) == previous_month,
+                Expense.tag == tag,
+                Expense.email == email
+            ).scalar() or 0
+            previous_month_expenses[tag] = tag_expense
+
+        # Calculate increase/decrease for each tag
+        comparison = {}
+        for tag in tags:
+            if current_month_expenses[tag] > previous_month_expenses[tag]:
+                comparison[tag] = "increase"
+            elif current_month_expenses[tag] < previous_month_expenses[tag]:
+                comparison[tag] = "decrease"
+            else:
+                comparison[tag] = "no change"
+
+        return jsonify({
+            "current_month_expenses": current_month_expenses,
+            "previous_month_expenses": previous_month_expenses,
+            "comparison": comparison
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Functionality to Add Expense
 @api.route("/add_expense", methods=["POST"])
 @jwt_required()
 def add_expense():
-    print("hello")
     try:
         email = get_jwt_identity()
-        print(email)
         user = User.query.filter_by(email=email).first()
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -202,20 +324,25 @@ def add_expense():
         expense_name = expense_data.get("expense_name")
         price = expense_data.get("price")
         tag = expense_data.get("tag")
-        mode = expense_data.get("mode")
+        date = expense_data.get("date")
+        print(date)
         description = expense_data.get("description")
-        print(expense_data)
+
         # Validate the required fields
-        if not expense_name or not price or not tag or not mode:
+        if not expense_name or not price or not tag or not date:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Store the expense data
+        try:
+            date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format"}), 400
+
         new_expense = Expense(
             email=email,
             expense_name=expense_name,
             price=price,
             tag=tag,
-            mode=mode,
+            date=date,
             description=description
         )
         db.session.add(new_expense)
@@ -225,6 +352,163 @@ def add_expense():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@api.route("/expenses", methods=["GET"])
+@jwt_required()
+def get_all_expenses():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        expenses = Expense.query.filter_by(email=email).all()
+        if not expenses:
+            return jsonify({"message": "No expenses found"}), 200
+
+        # Serialize the expenses data
+        serialized_expenses = []
+        for expense in expenses:
+            serialized_expense = {
+                "id": expense.id,
+                "expense_name": expense.expense_name,
+                "price": expense.price,
+                "tag": expense.tag,
+                "description": expense.description,
+                "date": expense.date.strftime("%Y-%m-%d") if expense.date else None
+            }
+            serialized_expenses.append(serialized_expense)
+
+        return jsonify(serialized_expenses), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Reminder Section----------------------------------------------------------#
+# Adding reminder form
+@api.route("/reminders", methods=["POST"])
+@jwt_required()
+def add_reminder():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.json
+        reminder_name = data.get("reminder_name")
+        description = data.get("description")
+        date = data.get("date")
+        price = data.get("price")
+        repeat = data.get("repeat")
+
+        # Create a new reminder object
+        new_reminder = Reminder(
+            email=email,
+            reminder_name=reminder_name,
+            description=description,
+            price=price,
+            repeat_type=repeat,
+            date=datetime.strptime(date, "%Y-%m-%d")  # Assuming date is in YYYY-MM-DD format
+        )
+
+        # Save the new reminder to the database
+        db.session.add(new_reminder)
+        db.session.commit()
+
+        # Retrieve all reminders for the logged-in user after adding the new reminder
+        reminders = Reminder.query.filter_by(email=email).all()
+
+        # Prepare response data
+        reminders_data = []
+        for reminder in reminders:
+            reminder_data = {
+                "id": reminder.id,
+                "date": reminder.date.strftime("%Y-%m-%d"),
+                "reminder_name": reminder.reminder_name,
+                "description": reminder.description,
+                "price": reminder.price,
+                "repeat": reminder.repeat_type
+            }
+            reminders_data.append(reminder_data)
+
+        return jsonify(reminders_data), 201
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400  # Bad request if date format is invalid
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500  # Internal server error for other exceptions
+
+
+
+@api.route("/get_reminders", methods=["GET"])
+@jwt_required()
+def get_reminders_by_date():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Retrieve all reminders for the logged-in user
+        reminders = Reminder.query.filter_by(email=email).all()
+
+        # Group reminders by date
+        reminders_by_date = {}
+        for reminder in reminders:
+            reminder_date_str = reminder.date.strftime("%Y-%m-%d")
+            if reminder_date_str not in reminders_by_date:
+                reminders_by_date[reminder_date_str] = []
+            reminders_by_date[reminder_date_str].append({
+                "id": reminder.id,
+                "date": reminder_date_str,
+                "reminder_name": reminder.reminder_name,
+                "description": reminder.description,
+                "price": reminder.price,
+                "repeat": reminder.repeat_type
+            })
+
+        # Extract reminders grouped by date into a flat list
+        reminders_list = []
+        for reminders_on_date in reminders_by_date.values():
+            reminders_list.extend(reminders_on_date)
+
+        return jsonify(reminders_list), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@api.route("/delete_reminders", methods=["POST"])
+@jwt_required()
+def delete_reminder():
+    try:
+        email = get_jwt_identity()
+        print(email)
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.json
+        reminder_id = data.get("id")
+        # Retrieve the reminder to delete
+        print(reminder_id, email)
+        reminder = Reminder.query.filter_by(id=reminder_id, email=email).first()
+        if not reminder:
+            return jsonify({"error": "Reminder not found"}), 404
+
+        # Delete the reminder from the database
+        db.session.delete(reminder)
+        db.session.commit()
+
+        return jsonify({"message": "Reminder deleted successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     api.run(debug=True)

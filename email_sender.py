@@ -1,14 +1,13 @@
 import smtplib
-import random
 from email.message import EmailMessage
 import os
 
 
 def send_mail(email, otp):
-    sender_email = ""
+    sender_email = os.environ.get("EMAIL")
     receiver_email = email
     message = EmailMessage()
-    message["Subject"] = "inline embedding"
+    message["Subject"] = "OTP from Spendwise"
     message["From"] = sender_email
     message["To"] = receiver_email
 
@@ -131,7 +130,7 @@ def send_mail(email, otp):
 
     with smtplib.SMTP(host='smtp.gmail.com', port=587, timeout=120) as connection:
         connection.starttls()
-        connection.login(user=sender_email, password="")
+        connection.login(user=sender_email, password=os.environ.get("PASSWORD"))
         connection.sendmail(sender_email,
                             receiver_email,
                             msg=message.as_string())
