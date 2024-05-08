@@ -1,10 +1,15 @@
 import smtplib
 from email.message import EmailMessage
 import os
+from dotenv import load_dotenv
+
+# Load the environment variables from the .env file
+load_dotenv()
 
 
 def send_mail(email, otp):
-    sender_email = os.environ.get("EMAIL")
+    sender_email = os.getenv("EMAIL")
+    print(os.environ.get("EMAIL"))
     receiver_email = email
     message = EmailMessage()
     message["Subject"] = "OTP from Spendwise"
@@ -130,7 +135,7 @@ def send_mail(email, otp):
 
     with smtplib.SMTP(host='smtp.gmail.com', port=587, timeout=120) as connection:
         connection.starttls()
-        connection.login(user=sender_email, password=os.environ.get("PASSWORD"))
+        connection.login(user=sender_email, password=os.getenv("PASSWORD"))
         connection.sendmail(sender_email,
                             receiver_email,
                             msg=message.as_string())
