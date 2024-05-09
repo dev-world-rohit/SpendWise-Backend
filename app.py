@@ -694,8 +694,10 @@ def renew_reminders():
         return {"error": str(e)}
 
 
-if __name__ == "__main__":
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(renew_reminders, 'interval', hours=1)
-    scheduler.start()
-    api.run(debug=True)
+scheduler = BackgroundScheduler()
+scheduler.add_job(renew_reminders, 'interval', hours=1)
+scheduler.start()
+
+
+# if __name__ == "__main__":
+    # api.run(debug=True)
