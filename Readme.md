@@ -8,6 +8,110 @@ expenses.
 3. Advance Reminder System
 4. Mailer System
 
+## Application Setup
+
+This repository contains a Flask application that includes various routes and functionalities. Follow the instructions below to set up the environment and run the application.
+
+## Prerequisites
+
+- Python 3.x installed on your system
+- `pip` package manager
+
+## Getting Started
+
+### 1. Clone the Repository
+
+Clone this repository to your local machine:
+
+```bash
+git clone <repository_url>
+cd <repository_name>
+```
+
+### 2. Set Up Virtual Environment
+
+### For Windows:
+
+Open a command prompt and execute the following commands to create and activate a virtual environment:
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+### For macOS/Linux:
+Open a terminal and execute the following commands to create and activate a virtual environment:
+```commandline
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Installing Packages
+
+While in the activated virtual environment, install the required packages listed in requirements.txt:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Creating `.env` File
+
+Create the .env  file using the command prompt in the main directory.
+
+### For Windows:
+Create the .env file by using the following command:
+
+```commandline
+ni .env
+```
+
+### For macOS/Linux:
+
+Create the .env file using the following commands:
+
+```commandline
+nano .env
+```
+
+### 5. Setup `.env` File
+Write down email address and password of the email to send the mail using the SMTP(Simple Mail Transfer Protocol).
+
+```commandline
+EMAIL = "your_email_address@gmail.com"
+PASSWORD = "password"
+```
+
+### 6. Set Up Environment Variables
+
+### For Windows:
+
+Set the Flask app environment variables to specify the application entry point (app.py) and environment (development):
+```bash
+set FLASK_APP=app.py
+set FLASK_ENV=development 
+```
+
+### For macOS/Linux:
+
+Set the Flask app environment variables using the following commands:
+
+```commandline
+export FLASK_APP=app.py
+export FLASK_ENV=development
+```
+
+### 7. Run the Application
+
+Start the Flask application by running the following command:
+
+```commandline
+flask run
+```
+
+The application will start running on the url http://localhost:5000/.
+
+---
+
 ## Routes
 ### Login Route
 #### 1. Login
