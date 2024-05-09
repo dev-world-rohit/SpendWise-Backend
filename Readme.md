@@ -135,6 +135,8 @@ The application will start running on the url http://localhost:5000/.
 }
 ```
 
+---
+
 ### Registration Route
 #### 1. OPT
 **URL:** /opt
@@ -154,6 +156,9 @@ The application will start running on the url http://localhost:5000/.
 "success"
 }
 ```
+
+---
+
 
 #### 2. Registration
 **URL:** /signup
@@ -179,6 +184,9 @@ The application will start running on the url http://localhost:5000/.
 }
 ```
 
+---
+
+
 ### DashBoard Routes
 #### 1. Getting UserName
 **URL:** /name
@@ -196,6 +204,9 @@ The application will start running on the url http://localhost:5000/.
     "name": "abc"
 }
 ```
+
+---
+
 
 #### 2. Getting Current Month and Current Year Total Expenses
 **URL:** /total_expense
@@ -215,6 +226,9 @@ The application will start running on the url http://localhost:5000/.
 }
 ```
 
+---
+
+
 #### 3. Getting Total of Tag Based Categorization of Expenses
 **URL:** /tag_based_expenses
 
@@ -224,6 +238,9 @@ The application will start running on the url http://localhost:5000/.
 ```commandline
 {}
 ```
+
+---
+
 
 **Response**
 ```commandline
@@ -263,6 +280,9 @@ The application will start running on the url http://localhost:5000/.
     }
 }
 ```
+
+---
+
 
 #### 4. Getting Upcoming 3 Reminders
 **URL:** /get_reminder_dashboard
@@ -304,6 +324,9 @@ The application will start running on the url http://localhost:5000/.
 ]
 ```
 
+---
+
+
 #### 5. Adding Expenses
 **URL:** /add_expense
 
@@ -326,6 +349,9 @@ The application will start running on the url http://localhost:5000/.
     "message": "Expense added successfully"
 }
 ```
+
+---
+
 
 ### Analysis Route
 #### 1. Getting Tag Based Categorization Expenses of Current Month
@@ -385,6 +411,9 @@ The application will start running on the url http://localhost:5000/.
 }
 ```
 
+---
+
+
 #### 3. Getting Monthly Expenses for the Current year and Previous year
 **URL:** /monthly_expenses
 
@@ -430,6 +459,9 @@ The application will start running on the url http://localhost:5000/.
 }
 ```
 
+---
+
+
 ### Reminder Routes
 #### 1. Adding Simple Reminders to Ourselves
 **URL:** /reminders
@@ -447,6 +479,9 @@ The application will start running on the url http://localhost:5000/.
         "repeat": "Every Month"
 }
 ```
+
+---
+
 
 **Response**
 ```commandline
@@ -469,6 +504,9 @@ The application will start running on the url http://localhost:5000/.
     }
 ]
 ```
+
+---
+
 
 #### 1. Getting All Reminders
 **URL:** /get_reminders
@@ -502,6 +540,9 @@ The application will start running on the url http://localhost:5000/.
     }
 ]
 ```
+
+---
+
 
 #### 1. Deleting Reminder
 **URL:** /delete_reminders
