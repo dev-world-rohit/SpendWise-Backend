@@ -4,13 +4,14 @@ import random
 import time
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta, timezone
-from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, unset_jwt_cookies, jwt_required, JWTManager
+from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, unset_jwt_cookies, jwt_required, \
+    JWTManager
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from sqlalchemy import extract
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import func
-
+from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, User, OtpRequests, Expense, Reminder
 from email_sender import send_mail
 
@@ -100,7 +101,7 @@ def generate_otp():
             send_otp(email)
             return jsonify("success")
         except:
-            return jsonify({"error": "Error occured. Please try again later."})
+            return jsonify({"error": "Error occurred. Please try again later."})
 
 
 @api.route("/signup", methods=["POST"])
@@ -386,6 +387,43 @@ def get_all_expenses():
         return jsonify({"error": str(e)}), 500
 
 
+@api.route("/get_reminder_dashboard", methods=["GET"])
+@jwt_required()
+def get_upcoming_reminders():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        current_datetime = datetime.utcnow()
+
+        upcoming_reminders = (
+            Reminder.query
+            .filter(Reminder.date >= current_datetime, Reminder.email == email)
+            .order_by(Reminder.date.asc())
+            .limit(3)
+            .all()
+        )
+
+        upcoming_reminders_data = []
+        for reminder in upcoming_reminders:
+            reminder_data = {
+                "id": reminder.id,
+                "date": reminder.date.strftime("%Y-%m-%d"),
+                "reminder_name": reminder.reminder_name,
+                "description": reminder.description,
+                "price": reminder.price,
+                "repeat": reminder.repeat_type
+            }
+            upcoming_reminders_data.append(reminder_data)
+
+        return upcoming_reminders_data
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # Reminder Section----------------------------------------------------------#
 # Adding reminder form
 @api.route("/reminders", methods=["POST"])
@@ -443,7 +481,6 @@ def add_reminder():
         return jsonify({"error": str(e)}), 500  # Internal server error for other exceptions
 
 
-
 @api.route("/get_reminders", methods=["GET"])
 @jwt_required()
 def get_reminders_by_date():
@@ -487,7 +524,6 @@ def get_reminders_by_date():
 def delete_reminder():
     try:
         email = get_jwt_identity()
-        print(email)
         user = User.query.filter_by(email=email).first()
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -510,5 +546,42 @@ def delete_reminder():
         return jsonify({"error": str(e)}), 500
 
 
+# Renewinig the reminders----------------------------------------------------------------#
+def renew_reminders():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        reminders = Reminder.query.filter_by(email=email).all()
+
+        for reminder in reminders:
+            if reminder.repeat_type == "One Time":
+                if reminder.date < datetime.utcnow():
+                    db.session.delete(reminder)
+                else:
+                    continue
+            elif reminder.repeat_type == "Every Day":
+                reminder.date += timedelta(days=1)
+            elif reminder.repeat_type == "Every Week":
+                reminder.date += timedelta(weeks=1)
+            elif reminder.repeat_type == "Every Month":
+                next_month_date = reminder.date.replace(day=1) + timedelta(days=32)
+                reminder.date = next_month_date.replace(day=min(reminder.date.day, next_month_date.day))
+            elif reminder.repeat_type == "Every Year":
+                reminder.date = reminder.date.replace(year=reminder.date.year + 1)
+
+        db.session.commit()
+
+        return {"message": "Reminder dates updated successfully"}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 if __name__ == "__main__":
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(renew_reminders, 'interval', hours=24)
+    scheduler.start()
     api.run(debug=True)
