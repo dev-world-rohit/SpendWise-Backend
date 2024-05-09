@@ -2,6 +2,7 @@ from datetime import datetime
 import json
 import random
 import time
+from calendar import month_name
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta, timezone
 from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, unset_jwt_cookies, jwt_required, \
@@ -311,6 +312,43 @@ def get_tag_based_expenses():
         return jsonify({"error": str(e)}), 500
 
 
+@api.route("/get_reminder_dashboard", methods=["GET"])
+@jwt_required()
+def get_upcoming_reminders():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        current_datetime = datetime.utcnow()
+
+        upcoming_reminders = (
+            Reminder.query
+            .filter(Reminder.date >= current_datetime, Reminder.email == email)
+            .order_by(Reminder.date.asc())
+            .limit(3)
+            .all()
+        )
+
+        upcoming_reminders_data = []
+        for reminder in upcoming_reminders:
+            reminder_data = {
+                "id": reminder.id,
+                "date": reminder.date.strftime("%Y-%m-%d"),
+                "reminder_name": reminder.reminder_name,
+                "description": reminder.description,
+                "price": reminder.price,
+                "repeat": reminder.repeat_type
+            }
+            upcoming_reminders_data.append(reminder_data)
+
+        return upcoming_reminders_data
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # Functionality to Add Expense
 @api.route("/add_expense", methods=["POST"])
 @jwt_required()
@@ -387,41 +425,116 @@ def get_all_expenses():
         return jsonify({"error": str(e)}), 500
 
 
-@api.route("/get_reminder_dashboard", methods=["GET"])
+# Analysis Page---------------------------------------------------------------#
+# Getting the Tag Based Data
+@api.route("/tag_based_expenses_analysis", methods=["GET"])
 @jwt_required()
-def get_upcoming_reminders():
+def get_tag_based_expenses_analysis():
     try:
         email = get_jwt_identity()
         user = User.query.filter_by(email=email).first()
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        current_datetime = datetime.utcnow()
+        current_month = datetime.utcnow().month
+        current_year = datetime.utcnow().year
 
-        upcoming_reminders = (
-            Reminder.query
-            .filter(Reminder.date >= current_datetime, Reminder.email == email)
-            .order_by(Reminder.date.asc())
-            .limit(3)
+        current_month_expenses = {}
+        for tag in tags:
+            tag_expense = db.session.query(func.sum(Expense.price)).filter(
+                extract('year', Expense.date) == current_year,
+                extract('month', Expense.date) == current_month,
+                Expense.tag == tag,
+                Expense.email == email
+            ).scalar() or 0
+            current_month_expenses[tag] = tag_expense
+
+        return jsonify({
+            "current_month_expenses": current_month_expenses
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Getting the Month wise Expense
+def get_expenses_by_month(email):
+    try:
+        current_year = datetime.utcnow().year
+
+        months = range(1, 13)
+        expenses_by_month = {month_name[month]: 0 for month in months}
+
+        expenses = (
+            db.session.query(func.sum(Expense.price), extract('month', Expense.date))
+            .filter(extract('year', Expense.date) == current_year, Expense.email == email)
+            .group_by(extract('month', Expense.date))
             .all()
         )
 
-        upcoming_reminders_data = []
-        for reminder in upcoming_reminders:
-            reminder_data = {
-                "id": reminder.id,
-                "date": reminder.date.strftime("%Y-%m-%d"),
-                "reminder_name": reminder.reminder_name,
-                "description": reminder.description,
-                "price": reminder.price,
-                "repeat": reminder.repeat_type
-            }
-            upcoming_reminders_data.append(reminder_data)
+        for expense_sum, month_number in expenses:
+            month_name_str = month_name[month_number]
+            expenses_by_month[month_name_str] = float(expense_sum) if expense_sum else 0
 
-        return upcoming_reminders_data
+        response_data = expenses_by_month
+
+        return jsonify(response_data), 200
 
     except Exception as e:
-        return {"error": str(e)}
+        return jsonify({"error": str(e)}), 500
+
+
+# Define a route to handle the expenses by month request
+@api.route("/expenses_by_month", methods=["GET"])
+@jwt_required()
+def expenses_by_month_route():
+    try:
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        return get_expenses_by_month(email)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Route to get monthly expenses for the current year and previous year
+def get_monthly_expenses_for_year(year):
+    monthly_expenses = {}
+    for month_number in range(1, 13):
+        month_name_str = month_name[month_number]
+        total_expense = calculate_total_expense_for_month(year, month_number)
+        monthly_expenses[month_name_str] = total_expense
+
+    return monthly_expenses
+
+
+def calculate_total_expense_for_month(year, month):
+    total_expense = db.session.query(func.sum(Expense.price)).filter(
+        extract('year', Expense.date) == year,
+        extract('month', Expense.date) == month
+    ).scalar() or 0
+
+    return total_expense
+
+
+@api.route("/monthly_expenses", methods=["GET"])
+def get_monthly_expenses():
+    try:
+        current_year = datetime.utcnow().year
+        previous_year = current_year - 1
+
+        current_year_expenses = get_monthly_expenses_for_year(current_year)
+        previous_year_expenses = get_monthly_expenses_for_year(previous_year)
+
+        return jsonify({
+            "current_year": current_year_expenses,
+            "previous_year": previous_year_expenses
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # Reminder Section----------------------------------------------------------#
@@ -548,6 +661,7 @@ def delete_reminder():
 
 # Renewinig the reminders----------------------------------------------------------------#
 def renew_reminders():
+    print("hello")
     try:
         email = get_jwt_identity()
         user = User.query.filter_by(email=email).first()
@@ -582,6 +696,6 @@ def renew_reminders():
 
 if __name__ == "__main__":
     scheduler = BackgroundScheduler()
-    scheduler.add_job(renew_reminders, 'interval', hours=24)
+    scheduler.add_job(renew_reminders, 'interval', hours=1)
     scheduler.start()
     api.run(debug=True)
