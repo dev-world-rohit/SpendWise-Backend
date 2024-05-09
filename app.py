@@ -16,31 +16,31 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, User, OtpRequests, Expense, Reminder
 from email_sender import send_mail
 
-api = Flask(__name__)
-CORS(api, origins='*')
+app = Flask(__name__)
+CORS(app, origins='*')
 
-api.config['SECRET_KEY'] = 'cairocoders-ednalan'
-api.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SECRET_KEY'] = 'cairocoders-ednalan'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 
-api.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=100)
-jwt = JWTManager(api)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=100)
+jwt = JWTManager(app)
 
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 SQLALCHEMY_ECHO = True
 
-bcrypt = Bcrypt(api)
-db.init_app(api)
+bcrypt = Bcrypt(app)
+db.init_app(app)
 
-with api.app_context():
+with app.app_context():
     db.create_all()
 
 
-@api.route("/")
+@app.route("/")
 def hello_world():
     return "<p>Hello, World!</p>"
 
 
-@api.route('/login', methods=["POST"])
+@app.route('/login', methods=["POST"])
 def create_token():
     if request.method == 'POST':
         email = request.form.get("email")
@@ -83,7 +83,7 @@ def send_otp(email):
     db.session.commit()
 
 
-@api.route("/otp", methods=['POST'])
+@app.route("/otp", methods=['POST'])
 def generate_otp():
     email = request.json["email"]
 
@@ -105,7 +105,7 @@ def generate_otp():
             return jsonify({"error": "Error occurred. Please try again later."})
 
 
-@api.route("/signup", methods=["POST"])
+@app.route("/signup", methods=["POST"])
 def signup():
     name = request.json['name']
     phone = request.json['phone']
@@ -153,7 +153,7 @@ def signup():
         return jsonify("No user found. Please SignUp First.")
 
 
-@api.after_request
+@app.after_request
 def refresh_expiring_jwts(response):
     try:
         exp_timestamp = get_jwt()["exp"]
@@ -170,14 +170,14 @@ def refresh_expiring_jwts(response):
         return response
 
 
-@api.route("/logout", methods=["POST"])
+@app.route("/logout", methods=["POST"])
 def logout():
     response = jsonify({"msg": "logout successful"})
     unset_jwt_cookies(response)
     return response
 
 
-@api.route('/<getemail>')
+@app.route('/<getemail>')
 @jwt_required()
 def my_profile(getemail):
     if not getemail:
@@ -195,7 +195,7 @@ def my_profile(getemail):
 
 # Dashboard Routes-----------------------------------------------------------------------------#
 # Getting name of the User
-@api.route("/name", methods=["GET"])
+@app.route("/name", methods=["GET"])
 @jwt_required()
 def get_name():
     try:
@@ -211,7 +211,7 @@ def get_name():
 
 
 # Get the total Expense of the month and year
-@api.route("/total_expense", methods=["GET"])
+@app.route("/total_expense", methods=["GET"])
 @jwt_required()
 def get_total_expense():
     try:
@@ -255,7 +255,7 @@ tags = [
 ]
 
 
-@api.route("/tag_based_expenses", methods=["GET"])
+@app.route("/tag_based_expenses", methods=["GET"])
 @jwt_required()
 def get_tag_based_expenses():
     try:
@@ -312,7 +312,7 @@ def get_tag_based_expenses():
         return jsonify({"error": str(e)}), 500
 
 
-@api.route("/get_reminder_dashboard", methods=["GET"])
+@app.route("/get_reminder_dashboard", methods=["GET"])
 @jwt_required()
 def get_upcoming_reminders():
     try:
@@ -350,7 +350,7 @@ def get_upcoming_reminders():
 
 
 # Functionality to Add Expense
-@api.route("/add_expense", methods=["POST"])
+@app.route("/add_expense", methods=["POST"])
 @jwt_required()
 def add_expense():
     try:
@@ -393,7 +393,7 @@ def add_expense():
         return jsonify({"error": str(e)}), 500
 
 
-@api.route("/expenses", methods=["GET"])
+@app.route("/expenses", methods=["GET"])
 @jwt_required()
 def get_all_expenses():
     try:
@@ -427,7 +427,7 @@ def get_all_expenses():
 
 # Analysis Page---------------------------------------------------------------#
 # Getting the Tag Based Data
-@api.route("/tag_based_expenses_analysis", methods=["GET"])
+@app.route("/tag_based_expenses_analysis", methods=["GET"])
 @jwt_required()
 def get_tag_based_expenses_analysis():
     try:
@@ -485,7 +485,7 @@ def get_expenses_by_month(email):
 
 
 # Define a route to handle the expenses by month request
-@api.route("/expenses_by_month", methods=["GET"])
+@app.route("/expenses_by_month", methods=["GET"])
 @jwt_required()
 def expenses_by_month_route():
     try:
@@ -519,7 +519,7 @@ def calculate_total_expense_for_month(year, month):
     return total_expense
 
 
-@api.route("/monthly_expenses", methods=["GET"])
+@app.route("/monthly_expenses", methods=["GET"])
 def get_monthly_expenses():
     try:
         current_year = datetime.utcnow().year
@@ -539,7 +539,7 @@ def get_monthly_expenses():
 
 # Reminder Section----------------------------------------------------------#
 # Adding reminder form
-@api.route("/reminders", methods=["POST"])
+@app.route("/reminders", methods=["POST"])
 @jwt_required()
 def add_reminder():
     try:
@@ -594,7 +594,7 @@ def add_reminder():
         return jsonify({"error": str(e)}), 500  # Internal server error for other exceptions
 
 
-@api.route("/get_reminders", methods=["GET"])
+@app.route("/get_reminders", methods=["GET"])
 @jwt_required()
 def get_reminders_by_date():
     try:
@@ -632,7 +632,7 @@ def get_reminders_by_date():
         return jsonify({"error": str(e)}), 500
 
 
-@api.route("/delete_reminders", methods=["POST"])
+@app.route("/delete_reminders", methods=["POST"])
 @jwt_required()
 def delete_reminder():
     try:
@@ -700,4 +700,4 @@ scheduler.start()
 
 
 # if __name__ == "__main__":
-    # api.run(debug=True)
+    # app.run(debug=True)
