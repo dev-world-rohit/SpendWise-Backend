@@ -42,36 +42,23 @@ def hello_world():
 
 @app.route('/login', methods=["POST"])
 def create_token():
-    if request.method == 'POST':
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        user = User.query.filter_by(email=email).first()
-        if user:
-            if bcrypt.check_password_hash(user.password, password):
-                access_token = create_access_token(identity=email)
-
-                return jsonify({
-                    "email": email,
-                    "access_token": access_token
-                })
-                # session["user_id"] = user.id
-                # login_user(user, remember=True)
-                # return jsonify("Login Successful.")
-            else:
-                return jsonify("Incorrect Password.")
-        else:
-            return jsonify("Email does not exist.")
-
-    email = request.json.get("email", None)
-    password = request.json.get("password", None)
+    email = request.json["email"]
+    password = request.json["password"]
 
     user = User.query.filter_by(email=email).first()
-    if user is None:
-        return jsonify({"error": "Wrong email or passwords"}), 401
 
-    if not bcrypt.check_password_hash(user.password, password):
-        return jsonify({"error": "Unauthorized"}), 401
+    if user:
+        if bcrypt.check_password_hash(user.password, password):
+            access_token = create_access_token(identity=email)
+
+            return jsonify({
+                "email": email,
+                "access_token": access_token
+            })
+        else:
+            return jsonify("Incorrect Password.")
+    else:
+        return jsonify("Email does not exist.")
 
 
 def send_otp(email):
@@ -115,9 +102,6 @@ def signup():
     current_time = int(time.time())
     otp_request = OtpRequests.query.filter_by(email=email).first()
     if otp_request:
-        otp_request_otp = str(otp_request.otp).strip()
-        otp_stripped = str(otp).strip()
-        # print(str(otp_request.otp)==str(otp),  otp, otp_request.otp, end='\n\n\n\n\n\n')
         if str(otp) == str(otp_request.otp):
             if current_time - otp_request.time < 600:
                 hashed_password = bcrypt.generate_password_hash(password)
@@ -203,6 +187,7 @@ def get_name():
         user = User.query.filter_by(email=email).first()
         if not user:
             return jsonify({"error": "User not found"}), 404
+        renew_reminders()
         name = user.name.split(" ")[0]
         return jsonify({"name": str(name)}), 201
 
@@ -659,9 +644,8 @@ def delete_reminder():
         return jsonify({"error": str(e)}), 500
 
 
-# Renewinig the reminders----------------------------------------------------------------#
+# Renewing the reminders----------------------------------------------------------------#
 def renew_reminders():
-    print("hello")
     try:
         email = get_jwt_identity()
         user = User.query.filter_by(email=email).first()
@@ -694,10 +678,11 @@ def renew_reminders():
         return {"error": str(e)}
 
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(renew_reminders, 'interval', hours=1)
-scheduler.start()
 
+if __name__ == "__main__":
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(renew_reminders, 'interval', hours=1)
+    scheduler.start()
+    app.run(debug=True)
 
-# if __name__ == "__main__":
-    # app.run(debug=True)
+# Backend Link - https://spendwise-backend-qbnf.onrender.com
