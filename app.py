@@ -677,12 +677,8 @@ def renew_reminders():
     except Exception as e:
         return {"error": str(e)}
 
-
-
-if __name__ == "__main__":
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(renew_reminders, 'interval', hours=1)
-    scheduler.start()
-    app.run(debug=True)
-
-# Backend Link - https://spendwise-backend-qbnf.onrender.com
+scheduler = BackgroundScheduler()
+scheduler.add_job(renew_reminders, 'interval', hours=1)
+scheduler.start()
+# if __name__ == "__main__":
+#     app.run(debug=True)
