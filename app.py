@@ -1,4 +1,3 @@
-from datetime import datetime
 import json
 import random
 import time
@@ -10,7 +9,6 @@ from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, u
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from sqlalchemy import extract
-from datetime import datetime, timedelta
 from sqlalchemy import func
 from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, User, OtpRequests, Expense, Reminder
@@ -19,7 +17,7 @@ from email_sender import send_mail
 app = Flask(__name__)
 CORS(app, origins='*')
 
-app.config['SECRET_KEY'] = 'cairocoders-ednalan'
+app.config['SECRET_KEY'] = 'camcorders-endian'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=100)
@@ -160,6 +158,70 @@ def logout():
     unset_jwt_cookies(response)
     return response
 
+
+# Forget Password
+@app.route("/forget_password_otp", methods=['POST'])
+def forget_generate_otp():
+    email = request.json["email"]
+    try:
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        otp_request = OtpRequests.query.filter_by(email=email).first()
+        if otp_request:
+            raise ValueError("OTP already sent.")
+
+        try:
+            send_otp(email)
+            return jsonify("success")
+        except:
+            return jsonify({"error": "Error occurred. Please try again later."})
+
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/forget_password_login", methods=["POST"])
+def forget_password_login():
+    email = request.json["email"]
+    password = request.json['password']
+    otp = request.json["otp"]
+    current_time = int(time.time())
+    otp_request = OtpRequests.query.filter_by(email=email).first()
+    if otp_request:
+        if str(otp) == str(otp_request.otp):
+            if current_time - otp_request.time < 600:
+                hashed_password = bcrypt.generate_password_hash(password)
+                user = User.query.filter_by(email=email).first()
+                user.password = hashed_password
+                db.session.commit()
+                access_token = create_access_token(identity=email)
+
+                otp_request = OtpRequests.query.filter_by(email=email).first()
+
+                if otp_request:
+                    db.session.delete(otp_request)
+                    db.session.commit()
+
+                return jsonify({
+                    "email": email,
+                    "access_token": access_token
+                })
+
+            else:
+                otp_request = OtpRequests.query.filter_by(email=email).first()
+
+                if otp_request:
+                    db.session.delete(otp_request)
+                    db.session.commit()
+
+                send_otp(email)
+                return jsonify("OTP expired. OTP Sent again.")
+        else:
+            return jsonify("Invalid OTP. Please try again.")
+    else:
+        return jsonify("No user found. Please SignUp First.")
 
 @app.route('/<getemail>')
 @jwt_required()
@@ -328,7 +390,7 @@ def get_upcoming_reminders():
             }
             upcoming_reminders_data.append(reminder_data)
 
-        return upcoming_reminders_data
+        return jsonify({"data": upcoming_reminders_data, "length": len(upcoming_reminders_data)})
 
     except Exception as e:
         return {"error": str(e)}
@@ -660,14 +722,14 @@ def renew_reminders():
                     db.session.delete(reminder)
                 else:
                     continue
-            elif reminder.repeat_type == "Every Day":
+            elif reminder.repeat_type == "Every Day" and reminder.date < datetime.utcnow():
                 reminder.date += timedelta(days=1)
-            elif reminder.repeat_type == "Every Week":
+            elif reminder.repeat_type == "Every Week" and reminder.date < datetime.utcnow():
                 reminder.date += timedelta(weeks=1)
-            elif reminder.repeat_type == "Every Month":
+            elif reminder.repeat_type == "Every Month" and reminder.date < datetime.utcnow():
                 next_month_date = reminder.date.replace(day=1) + timedelta(days=32)
                 reminder.date = next_month_date.replace(day=min(reminder.date.day, next_month_date.day))
-            elif reminder.repeat_type == "Every Year":
+            elif reminder.repeat_type == "Every Year" and reminder.date < datetime.utcnow():
                 reminder.date = reminder.date.replace(year=reminder.date.year + 1)
 
         db.session.commit()
@@ -677,8 +739,9 @@ def renew_reminders():
     except Exception as e:
         return {"error": str(e)}
 
+
 scheduler = BackgroundScheduler()
 scheduler.add_job(renew_reminders, 'interval', hours=1)
 scheduler.start()
-# if __name__ == "__main__":
-#     app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)
