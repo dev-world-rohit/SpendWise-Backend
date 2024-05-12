@@ -54,9 +54,9 @@ def create_token():
                 "access_token": access_token
             })
         else:
-            return jsonify("Incorrect Password.")
+            return jsonify({"error": "Incorrect Password."})
     else:
-        return jsonify("Email does not exist.")
+        return jsonify({"error": "Email does not exits."})
 
 
 def send_otp(email):
@@ -128,11 +128,12 @@ def signup():
                     db.session.commit()
 
                 send_otp(email)
-                return jsonify("OTP expired. OTP Sent again.")
+                return jsonify({"error": "OTP expired. OTP Sent again."})
         else:
-            return jsonify("Invalid OTP. Please try again.")
+            return jsonify({"error": "Invalid OTP"})
+
     else:
-        return jsonify("No user found. Please SignUp First.")
+        return jsonify({"error": "No User found."})
 
 
 @app.after_request
@@ -163,14 +164,20 @@ def logout():
 @app.route("/forget_password_otp", methods=['POST'])
 def forget_generate_otp():
     email = request.json["email"]
+    current_time = int(time.time())
     try:
         user = User.query.filter_by(email=email).first()
         if not user:
-            return jsonify({"error": "User not found"}), 404
+            return jsonify({"error": "User not found"})
 
         otp_request = OtpRequests.query.filter_by(email=email).first()
         if otp_request:
-            raise ValueError("OTP already sent.")
+            if current_time - otp_request.time < 600:
+                return jsonify({"error": "Otp already sent."})
+            else:
+                if otp_request:
+                    db.session.delete(otp_request)
+                    db.session.commit()
 
         try:
             send_otp(email)
@@ -178,8 +185,8 @@ def forget_generate_otp():
         except:
             return jsonify({"error": "Error occurred. Please try again later."})
 
-    except (TypeError, ValueError) as e:
-        return jsonify({"error": str(e)})
+    except:
+        return jsonify({"error": "Error occured"})
 
 
 @app.route("/forget_password_login", methods=["POST"])
@@ -217,11 +224,11 @@ def forget_password_login():
                     db.session.commit()
 
                 send_otp(email)
-                return jsonify("OTP expired. OTP Sent again.")
+                return jsonify({"error": "OTP expired. OTP Sent again."})
         else:
-            return jsonify("Invalid OTP. Please try again.")
+            return jsonify({"error": "Invalid OTP"})
     else:
-        return jsonify("No user found. Please SignUp First.")
+        return jsonify({"error": "No User found."})
 
 
 # @app.route('/<getemail>')
@@ -791,5 +798,6 @@ def renew_reminders():
 scheduler = BackgroundScheduler()
 scheduler.add_job(renew_reminders, 'interval', hours=1)
 scheduler.start()
-# if __name__ == "__main__":
-#     app.run(debug=True)
+
+if __name__ == "__main__":
+    app.run(debug=True)
