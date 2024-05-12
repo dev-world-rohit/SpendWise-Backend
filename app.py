@@ -223,20 +223,21 @@ def forget_password_login():
     else:
         return jsonify("No user found. Please SignUp First.")
 
-@app.route('/<getemail>')
-@jwt_required()
-def my_profile(getemail):
-    if not getemail:
-        return jsonify({"error": "Unauthorized Access"}), 401
 
-    user = User.query.filter_by(email=getemail).first()
-    response_body = {
-        "id": user.id,
-        "name": user.name,
-        "email": user.email,
-    }
-
-    return response_body
+# @app.route('/<getemail>')
+# @jwt_required()
+# def my_profile(getemail):
+#     if not getemail:
+#         return jsonify({"error": "Unauthorized Access"}), 401
+#
+#     user = User.query.filter_by(email=getemail).first()
+#     response_body = {
+#         "id": user.id,
+#         "name": user.name,
+#         "email": user.email,
+#     }
+#
+#     return response_body
 
 
 # Dashboard Routes-----------------------------------------------------------------------------#
@@ -249,7 +250,6 @@ def get_name():
         user = User.query.filter_by(email=email).first()
         if not user:
             return jsonify({"error": "User not found"}), 404
-        renew_reminders()
         name = user.name.split(" ")[0]
         return jsonify({"name": str(name)}), 201
 
@@ -706,6 +706,53 @@ def delete_reminder():
         return jsonify({"error": str(e)}), 500
 
 
+# Setting --------------------------------------------------------------#
+@app.route("/get_name_phone", methods=["GET"])
+@jwt_required()
+def get_name_phone():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        name = user.name
+        phone = user.phone
+
+        data = {
+            "name": str(name),
+            "phone": str(phone)
+        }
+
+        return jsonify(data), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/change_name_phone", methods=["POST"])
+@jwt_required()
+def change_name_phone():
+    try:
+        name = request.json["name"]
+        phone = request.json["phone"]
+
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        user.name = name
+        user.phone = phone
+
+        db.session.commit()
+
+        return jsonify({"message": "success"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # Renewing the reminders----------------------------------------------------------------#
 def renew_reminders():
     try:
@@ -717,6 +764,7 @@ def renew_reminders():
         reminders = Reminder.query.filter_by(email=email).all()
 
         for reminder in reminders:
+            print(reminder.date < datetime.utcnow())
             if reminder.repeat_type == "One Time":
                 if reminder.date < datetime.utcnow():
                     db.session.delete(reminder)
@@ -743,5 +791,5 @@ def renew_reminders():
 scheduler = BackgroundScheduler()
 scheduler.add_job(renew_reminders, 'interval', hours=1)
 scheduler.start()
-if __name__ == "__main__":
-    app.run(debug=True)
+# if __name__ == "__main__":
+#     app.run(debug=True)
