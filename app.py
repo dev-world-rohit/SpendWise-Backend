@@ -13,6 +13,7 @@ from sqlalchemy import func
 from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, User, OtpRequests, Expense, Reminder
 from email_sender import send_mail
+from sqlalchemy.exc import IntegrityError
 
 app = Flask(__name__)
 CORS(app, origins='*')
@@ -230,6 +231,35 @@ def forget_password_login():
     else:
         return jsonify({"error": "No User found."})
 
+
+@app.route("/delete_account", methods=["GET"])
+@jwt_required()
+def delete_account():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        expenses = Expense.query.filter_by(email=user.email).all()
+        for expense in expenses:
+            db.session.delete(expense)
+
+        reminders = Reminder.query.filter_by(email=user.email).all()
+        for reminder in reminders:
+            db.session.delete(reminder)
+
+        db.session.delete(user)
+        db.session.commit()
+
+        return jsonify({"message": "Account Deleted Successfully."})
+
+    except IntegrityError as e:
+        db.session.rollback()
+        return jsonify({"error": "Database Integrity Error"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # @app.route('/<getemail>')
 # @jwt_required()
@@ -697,8 +727,6 @@ def delete_reminder():
 
         data = request.json
         reminder_id = data.get("id")
-        # Retrieve the reminder to delete
-        print(reminder_id, email)
         reminder = Reminder.query.filter_by(id=reminder_id, email=email).first()
         if not reminder:
             return jsonify({"error": "Reminder not found"}), 404
