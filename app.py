@@ -11,9 +11,10 @@ from flask_cors import CORS
 from sqlalchemy import extract
 from sqlalchemy import func
 from apscheduler.schedulers.background import BackgroundScheduler
-from models import db, User, OtpRequests, Expense, Reminder
+from models import db, User, OtpRequests, Expense, Reminder, RemindFriend, ErrorSendingMail
 from email_sender import send_mail
 from sqlalchemy.exc import IntegrityError
+from email_message_generator import *
 
 app = Flask(__name__)
 CORS(app, origins='*')
@@ -60,9 +61,15 @@ def create_token():
         return jsonify({"error": "Email does not exits."})
 
 
+def send_mail_person(email, name, reciver, price, description):
+    message = person_reminder_message(name, reciver, price, description)
+    send_mail(email, message)
+
+
 def send_otp(email):
     otp = random.randint(100000, 999999)
-    send_mail(email, otp)
+    message = otp_generator(otp)
+    send_mail(email, message)
     current_time = int(time.time())
     presave = OtpRequests(email=email, otp=otp, time=current_time)
     db.session.add(presave)
@@ -278,6 +285,34 @@ def delete_account():
 
 
 # Dashboard Routes-----------------------------------------------------------------------------#
+# Get Error Log is the Reminder for Friend Failed
+@app.route("/get_failed_emails", methods=["GET"])
+@jwt_required()
+def get_failed_emails():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        reminders = ErrorSendingMail.query.filter_by(email=email).all()
+        if reminders:
+            delete_reminders = []
+            error_reminders = ""
+            for reminder in reminders:
+                error_reminders += reminder.reminder_name + ", "
+                delete_reminders.append(reminder)
+
+            for reminder in delete_reminders:
+                db.session.delete(reminder)
+
+            return jsonify({"error_logs": error_reminders}), 200
+        return jsonify({"message": "Nothing to Share"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # Getting name of the User
 @app.route("/name", methods=["GET"])
 @jwt_required()
@@ -622,6 +657,61 @@ def get_monthly_expenses():
 
 
 # Reminder Section----------------------------------------------------------#
+# Send Emails to Person
+def send_reminders():
+    today = datetime.utcnow().date()
+    reminders = RemindFriend.query.filter_by(date=today).all()
+    delete_reminders = []
+    for reminder in reminders:
+        try:
+            message = person_reminder_message(reminder.email, reminder.reminder_name, reminder.price, reminder.description)
+            send_mail(reminder.email, message)
+            delete_reminders.append(reminder)
+
+        except Exception as e:
+            error_log = ErrorSendingMail(
+                email=reminder.email,
+                reminder_name=reminder.reminder_name
+            )
+            db.session.add(error_log)
+            db.session.commit()
+
+    for reminder in delete_reminders:
+        db.session.delete(reminder)
+        db.session.commit()
+
+
+# get all reminders
+def get_all_reminders(email):
+    reminders = Reminder.query.filter_by(email=email).all()
+    person_reminders = RemindFriend.query.filter_by(email=email).all()
+
+    reminders_data = []
+    for reminder in reminders:
+        reminder_data = {
+            "id": reminder.id,
+            "date": reminder.date.strftime("%Y-%m-%d"),
+            "reminder_name": reminder.reminder_name.split(" ")[0],
+            "description": reminder.description,
+            "price": reminder.price,
+            "repeat": reminder.repeat_type
+        }
+        reminders_data.append(reminder_data)
+
+    for reminder in person_reminders:
+        reminder_data = {
+            "id": reminder.id,
+            "date": reminder.date.strftime("%Y-%m-%d"),
+            "reminder_name": reminder.reminder_name.split(" ")[0],
+            "description": reminder.description,
+            "price": reminder.price,
+            "person_email": reminder.person_email
+        }
+        reminders_data.append(reminder_data)
+
+    return sorted(reminders_data, key=lambda x: x["date"])
+
+
 # Adding reminder form
 @app.route("/reminders", methods=["POST"])
 @jwt_required()
@@ -639,78 +729,81 @@ def add_reminder():
         price = data.get("price")
         repeat = data.get("repeat")
 
-        # Create a new reminder object
         new_reminder = Reminder(
             email=email,
             reminder_name=reminder_name,
             description=description,
             price=price,
             repeat_type=repeat,
-            date=datetime.strptime(date, "%Y-%m-%d")  # Assuming date is in YYYY-MM-DD format
+            date=datetime.strptime(date, "%Y-%m-%d")
         )
 
-        # Save the new reminder to the database
         db.session.add(new_reminder)
         db.session.commit()
 
-        # Retrieve all reminders for the logged-in user after adding the new reminder
-        reminders = Reminder.query.filter_by(email=email).all()
+        reminders_data = get_all_reminders(email)
 
-        # Prepare response data
-        reminders_data = []
-        for reminder in reminders:
-            reminder_data = {
-                "id": reminder.id,
-                "date": reminder.date.strftime("%Y-%m-%d"),
-                "reminder_name": reminder.reminder_name,
-                "description": reminder.description,
-                "price": reminder.price,
-                "repeat": reminder.repeat_type
-            }
-            reminders_data.append(reminder_data)
-
-        return jsonify(reminders_data), 201
+        return jsonify({"reminders": reminders_data}), 201
 
     except ValueError as ve:
-        return jsonify({"error": str(ve)}), 400  # Bad request if date format is invalid
+        return jsonify({"error": str(ve)}), 400
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500  # Internal server error for other exceptions
+        return jsonify({"error": str(e)}), 500
 
 
-@app.route("/get_reminders", methods=["GET"])
+# Adding reminder form
+@app.route("/reminders_friend", methods=["POST"])
 @jwt_required()
-def get_reminders_by_date():
+def add_reminder_to_person():
     try:
         email = get_jwt_identity()
         user = User.query.filter_by(email=email).first()
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        # Retrieve all reminders for the logged-in user
-        reminders = Reminder.query.filter_by(email=email).all()
+        data = request.json
+        reminder_name = data["reminder_name"]
+        description = data["description"]
+        date = data["date"]
+        price = data["price"]
+        person_email = data["person_email"]
 
-        # Group reminders by date
-        reminders_by_date = {}
-        for reminder in reminders:
-            reminder_date_str = reminder.date.strftime("%Y-%m-%d")
-            if reminder_date_str not in reminders_by_date:
-                reminders_by_date[reminder_date_str] = []
-            reminders_by_date[reminder_date_str].append({
-                "id": reminder.id,
-                "date": reminder_date_str,
-                "reminder_name": reminder.reminder_name,
-                "description": reminder.description,
-                "price": reminder.price,
-                "repeat": reminder.repeat_type
-            })
+        new_reminder = RemindFriend(
+            email=email,
+            reminder_name=reminder_name,
+            description=description,
+            price=price,
+            person_email=person_email,
+            date=datetime.strptime(date, "%Y-%m-%d")
+        )
 
-        # Extract reminders grouped by date into a flat list
-        reminders_list = []
-        for reminders_on_date in reminders_by_date.values():
-            reminders_list.extend(reminders_on_date)
+        db.session.add(new_reminder)
+        db.session.commit()
 
-        return jsonify(reminders_list), 200
+        reminders_data = get_all_reminders(email)
+
+        return jsonify({"reminders": reminders_data}), 201
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/get_reminders", methods=["GET"])
+@jwt_required()
+def get_reminders():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        reminders_data = get_all_reminders(email)
+
+        return jsonify({"reminders": reminders_data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -726,12 +819,17 @@ def delete_reminder():
             return jsonify({"error": "User not found"}), 404
 
         data = request.json
-        reminder_id = data.get("id")
-        reminder = Reminder.query.filter_by(id=reminder_id, email=email).first()
+        reminder_id = data["id"]
+
+        reminder = False
+        if Reminder.query.filter_by(id=reminder_id, email=email).first():
+            reminder = Reminder.query.filter_by(id=reminder_id, email=email).first()
+        if RemindFriend.query.filter_by(id=reminder_id, email=email).first():
+            reminder = RemindFriend.query.filter_by(id=reminder_id, email=email).first()
+
         if not reminder:
             return jsonify({"error": "Reminder not found"}), 404
 
-        # Delete the reminder from the database
         db.session.delete(reminder)
         db.session.commit()
 
@@ -824,8 +922,11 @@ def renew_reminders():
 
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(renew_reminders, 'interval', hours=1)
+# For presave database----------------#
+# scheduler.add_job(renew_reminders, 'interval', seconds=1)
+scheduler.add_job(renew_reminders, 'cron', hour=0, minute=0)
+scheduler.add_job(send_reminders, 'cron', hour=0, minute=0)
 scheduler.start()
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)

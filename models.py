@@ -45,3 +45,18 @@ class Reminder(db.Model):
     description = db.Column(db.Text, nullable=True)
     repeat_type = db.Column(db.String(50), nullable=False)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+
+
+class RemindFriend(db.Model):
+    id = db.Column(db.String(100), primary_key=True, unique=True, default=get_uuid)
+    email = db.Column(db.String(150), nullable=False)
+    reminder_name = db.Column(db.String(255), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    person_email = db.Column(db.String(150), nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+
+class ErrorSendingMail(db.Model):
+    id = db.Column(db.String(100), primary_key=True, unique=True, default=get_uuid)
+    email = db.Column(db.String(150), nullable=False)
+    reminder_name = db.Column(db.String(255), nullable=False)
