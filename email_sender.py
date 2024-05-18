@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def send_mail(email, message):
+def send_mail(email, email_send):
     sender_email = os.getenv("EMAIL")
     receiver_email = email
     message = EmailMessage()
@@ -16,7 +16,7 @@ def send_mail(email, message):
     message["To"] = receiver_email
 
     # encoded = base64.b64encode(open("mailtrap.jpg", "rb").read()).decode()
-    email_to_send = message
+    email_to_send = email_send
     message.set_content(email_to_send, subtype='html')
 
     with smtplib.SMTP(host='smtp.gmail.com', port=587, timeout=120) as connection:
