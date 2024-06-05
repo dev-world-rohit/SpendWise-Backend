@@ -897,7 +897,6 @@ def renew_reminders():
         reminders = Reminder.query.filter_by(email=email).all()
 
         for reminder in reminders:
-            print(reminder.date < datetime.utcnow())
             if reminder.repeat_type == "One Time":
                 if reminder.date < datetime.utcnow():
                     db.session.delete(reminder)
@@ -919,6 +918,111 @@ def renew_reminders():
 
     except Exception as e:
         return {"error": str(e)}
+
+
+# Get all expenses based on the date------------------------#
+@app.route("/get_all_expenses", methods=["POST"])
+@jwt_required()
+def get_expense_datewise():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.json
+        start_date = datetime.strptime(data["start_date"], "%Y-%m-%d")
+        end_date = datetime.strptime(data["end_date"], "%Y-%m-%d")
+
+        expenses_data = db.session.query(Expense).filter(
+            Expense.email == email,
+            Expense.date.between(start_date, end_date)
+        ).order_by(Expense.date.desc()).all()
+
+        data = []
+        for expense in expenses_data:
+                data.append({
+                    "id": expense.id,
+                    "expense_name": expense.expense_name,
+                    "price": expense.price,
+                    "tag": expense.tag,
+                    "description": expense.description,
+                    "date": expense.date.strftime("%Y-%m-%d") if expense.date else None
+                })
+        return {"expenses": data}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.route("/delete_expense", methods=["POST"])
+@jwt_required()
+def delete_expense():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.json
+        expense_id = data["id"]
+
+        expense = False
+        if Expense.query.filter_by(id=expense_id, email=email).first():
+            expense = Expense.query.filter_by(id=expense_id, email=email).first()
+
+        if not expense:
+            return jsonify({"error": "Reminder not found"}), 404
+
+        db.session.delete(expense)
+        db.session.commit()
+
+        return jsonify({"message": "Expense deleted successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/update_expense", methods=["POST"])
+@jwt_required()
+def update_expense():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        expense_data = request.json
+        expense_id = expense_data.get("id")
+        expense_name = expense_data.get("expense_name")
+        price = expense_data.get("price")
+        tag = expense_data.get("tag")
+        date = expense_data.get("date")
+        description = expense_data.get("description")
+
+        if not expense_id or not expense_name or not price or not tag or not date:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        try:
+            date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format"}), 400
+
+        expense = Expense.query.filter_by(id=expense_id, email=email).first()
+        if not expense:
+            return jsonify({"error": "Expense not found"}), 404
+
+        expense.expense_name = expense_name
+        expense.price = price
+        expense.tag = tag
+        expense.date = date
+        expense.description = description
+
+        db.session.commit()
+
+        return jsonify({"message": "Expense updated successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 scheduler = BackgroundScheduler()
