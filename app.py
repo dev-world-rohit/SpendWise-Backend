@@ -1032,5 +1032,5 @@ scheduler.add_job(renew_reminders, 'cron', hour=0, minute=0)
 scheduler.add_job(send_reminders, 'cron', hour=0, minute=0)
 scheduler.start()
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# if __name__ == "__main__":
+#     app.run(debug=True)
