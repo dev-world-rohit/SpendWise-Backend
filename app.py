@@ -656,6 +656,40 @@ def get_monthly_expenses():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/get_current_month_expenses", methods=["GET"])
+@jwt_required()
+def get_current_month_expenses():
+    try:
+        email = get_jwt_identity()
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Get the first and last day of the current month
+        today = datetime.today()
+        first_day = today.replace(day=1)
+        next_month = first_day.replace(day=28) + timedelta(days=4)  # this will never fail
+        last_day = next_month - timedelta(days=next_month.day)
+
+        # Query expenses for the current month
+        expenses_data = db.session.query(Expense).filter(
+            Expense.email == email,
+            Expense.date.between(first_day, last_day)
+        ).all()
+
+        # Initialize the days list with zeros
+        days_in_month = (last_day - first_day).days + 1
+        daily_expenses = [0] * days_in_month
+
+        # Sum up the expenses for each day
+        for expense in expenses_data:
+            day_index = expense.date.day - 1  # to make it zero-based index
+            daily_expenses[day_index] += expense.price
+
+        return jsonify({"expenses": daily_expenses})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Reminder Section----------------------------------------------------------#
 # Send Emails to Person
 def send_reminders():
